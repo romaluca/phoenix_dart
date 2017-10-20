@@ -1,4 +1,4 @@
-
+import 'dart:async';
 /**
  *
  * Creates a timer that accepts a `timerCalc` function to perform
@@ -18,28 +18,32 @@
  * @param {Function} callback
  * @param {Function} timerCalc
  */
-class Timer {
-  Timer(callback, timerCalc){
-    this.callback  = callback
-    this.timerCalc = timerCalc
-    this.timer     = null
-    this.tries     = 0
+class PhoenixTimer {
+  var callback;
+  var timerCalc;
+  Timer timer;
+  var tries;
+
+  PhoenixTimer(callback, timerCalc){
+    this.callback  = callback;
+    this.timerCalc = timerCalc;
+    this.timer     = null;
+    this.tries     = 0;
   }
 
-  reset(){
-    this.tries = 0
-    clearTimeout(this.timer)
+  void reset(){
+    this.tries = 0;
+    timer.cancel();
   }
 
   /**
    * Cancels any previous scheduleTimeout and schedules callback
    */
-  scheduleTimeout(){
-    clearTimeout(this.timer)
-
-    this.timer = setTimeout(() => {
-      this.tries = this.tries + 1
-      this.callback()
-    }, this.timerCalc(this.tries + 1))
+  void scheduleTimeout(){
+    this.timer?.cancel();
+    this.timer = new Timer(new Duration(milliseconds: this.timerCalc(this.tries + 1)), () {
+      this.tries = this.tries + 1;
+      this.callback();
+    });    
   }
 }

@@ -1,3 +1,5 @@
+import './channel.dart';
+import './timer.dart';
 /**
  * Initializes the Push
  * @param {Channel} channel - The Channel
@@ -7,40 +9,54 @@
  */
 class Push {
 
-  Push(channel, event, payload, timeout){
-    this.channel      = channel
-    this.event        = event
-    this.payload      = payload || {}
-    this.receivedResp = null
-    this.timeout      = timeout
-    this.timeoutTimer = null
-    this.recHooks     = []
-    this.sent         = false
+  Channel channel;
+  String event;
+  Map payload;  
+  Map receivedResp;
+  num timeout;
+  PhoenixTimer timeoutTimer;
+  var recHooks;
+  bool sent;
+  var ref;
+  var refEvent;
+
+
+  Push(channel, event, Map payload, timeout){
+    this.channel      = channel;
+    this.event        = event;
+    this.payload      = payload ?? new Map();
+    this.receivedResp = null;
+    this.timeout      = timeout;
+    this.timeoutTimer = null;
+    this.recHooks     = [];
+    this.sent         = false;
   }
 
   /**
    *
    * @param {number} timeout
    */
-  resend(timeout){
-    this.timeout = timeout
-    this.reset()
-    this.send()
+  void resend(timeout){
+    this.timeout = timeout;
+    this.reset();
+    this.send();
   }
 
   /**
    *
    */
-  send(){ if(this.hasReceived("timeout")){ return }
-    this.startTimeout()
-    this.sent = true
-    this.channel.socket.push({
-      topic: this.channel.topic,
-      event: this.event,
-      payload: this.payload,
-      ref: this.ref,
-      join_ref: this.channel.joinRef()
-    })
+  void send(){ 
+    if(!this.hasReceived("timeout")){
+      this.startTimeout();
+      this.sent = true;
+      this.channel.socket.push({
+        "topic": this.channel.topic,
+        "event": this.event,
+        "payload": this.payload,
+        "ref": this.ref,
+        "join_ref": this.channel.joinRef()
+      });
+    }
   }
 
   /**
@@ -48,61 +64,69 @@ class Push {
    * @param {*} status
    * @param {*} callback
    */
-  receive(status, callback){
+  Push receive(status, callback){
     if(this.hasReceived(status)){
-      callback(this.receivedResp.response)
+      callback(this.receivedResp["response"]);
     }
 
-    this.recHooks.push({status, callback})
-    return this
+    this.recHooks.push({status: status, callback: callback});
+    return this;
   }
 
 
   // private
 
-  reset(){
-    this.cancelRefEvent()
-    this.ref          = null
-    this.refEvent     = null
-    this.receivedResp = null
-    this.sent         = false
+  void reset(){
+    this.cancelRefEvent();
+    this.ref          = null;
+    this.refEvent     = null;
+    this.receivedResp = null;
+    this.sent         = false;
   }
 
-  matchReceive({status, response, ref}){
-    this.recHooks.filter( h => h.status === status )
-                 .forEach( h => h.callback(response) )
+  void matchReceive(payload){
+    var status = payload["status"];
+    var response = payload["response"];
+    //var ref = payload["ref"];
+    this.recHooks.filter( (h) => h.status == status )
+                 .forEach( (h) => h.callback(response));
   }
 
-  cancelRefEvent(){ if(!this.refEvent){ return }
-    this.channel.off(this.refEvent)
+  void cancelRefEvent(){ 
+    if(this.refEvent)
+      this.channel.off(this.refEvent);
   }
 
-  cancelTimeout(){
-    clearTimeout(this.timeoutTimer)
-    this.timeoutTimer = null
+  void cancelTimeout(){
+    this.timeoutTimer.reset();
+    this.timeoutTimer = null;
   }
 
-  startTimeout(){ if(this.timeoutTimer){ this.cancelTimeout() }
-    this.ref      = this.channel.socket.makeRef()
-    this.refEvent = this.channel.replyEventName(this.ref)
+  void startTimeout(){ 
+    if(this.timeoutTimer != null)
+      this.cancelTimeout();
+    this.ref      = this.channel.socket.makeRef();
+    this.refEvent = this.channel.replyEventName(this.ref);
 
-    this.channel.on(this.refEvent, payload => {
-      this.cancelRefEvent()
-      this.cancelTimeout()
-      this.receivedResp = payload
-      this.matchReceive(payload)
-    })
+    this.channel.on(this.refEvent, (Map payload) {
+      this.cancelRefEvent();
+      this.cancelTimeout();
+      this.receivedResp = payload;
+      this.matchReceive(payload);
+    });
 
-    this.timeoutTimer = setTimeout(() => {
-      this.trigger("timeout", {})
-    }, this.timeout)
+    this.timeoutTimer = new PhoenixTimer(() {
+      this.trigger("timeout", new Map());
+    }, this.timeout);
+    this.timeoutTimer.scheduleTimeout();
+
   }
 
-  hasReceived(status){
-    return this.receivedResp && this.receivedResp.status === status
+  bool hasReceived(status){
+    return this.receivedResp != null && this.receivedResp["status"] == status;
   }
 
-  trigger(status, response){
-    this.channel.trigger(this.refEvent, {status, response})
+  void trigger(status, Map response){
+    this.channel.trigger(this.refEvent, {status: status, response: response});
   }
 }

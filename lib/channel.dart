@@ -5,7 +5,7 @@
  * @param {Socket} socket
  */
 class Channel {
-  constructor(topic, params, socket) {
+  Channel(topic, params, socket) {
     this.state       = CHANNEL_STATES.closed
     this.topic       = topic
     this.params      = params || {}
@@ -166,11 +166,11 @@ class Channel {
                  .map( bind => bind.callback(handledPayload, ref, joinRef || this.joinRef()))
   }
 
-  replyEventName(ref){ return `chan_reply_${ref}` }
+  String replyEventName(ref){ return "chan_reply_${ref}"; }
 
-  isClosed() { return this.state === CHANNEL_STATES.closed }
-  isErrored(){ return this.state === CHANNEL_STATES.errored }
-  isJoined() { return this.state === CHANNEL_STATES.joined }
-  isJoining(){ return this.state === CHANNEL_STATES.joining }
-  isLeaving(){ return this.state === CHANNEL_STATES.leaving }
+  bool isClosed() { return this.state == CHANNEL_STATES.closed; }
+  bool isErrored(){ return this.state == CHANNEL_STATES.errored; }
+  bool isJoined() { return this.state == CHANNEL_STATES.joined; }
+  bool isJoining(){ return this.state == CHANNEL_STATES.joining; }
+  bool isLeaving(){ return this.state == CHANNEL_STATES.leaving; }
 }

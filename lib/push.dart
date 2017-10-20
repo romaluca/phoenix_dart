@@ -7,7 +7,7 @@
  */
 class Push {
 
-  constructor(channel, event, payload, timeout){
+  Push(channel, event, payload, timeout){
     this.channel      = channel
     this.event        = event
     this.payload      = payload || {}

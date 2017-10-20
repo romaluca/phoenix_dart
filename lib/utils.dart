@@ -3,36 +3,36 @@ enum SOCKET_STATES = {connecting, open, closing, closed };
 const int DEFAULT_TIMEOUT = 10000;
 const int WS_CLOSE_NORMAL = 1000;
 
-const CHANNEL_STATES = {
-  closed: "closed",
-  errored: "errored",
-  joined: "joined",
-  joining: "joining",
-  leaving: "leaving",
+class CHANNEL_STATES {
+  static const closed = "closed";
+  static const errored = "errored";  
+  static const joined = "joined";
+  static const joining = "joining";
+  static const leaving = "leaving";
 }
-const CHANNEL_EVENTS = {
-  close: "phx_close",
-  error: "phx_error",
-  join: "phx_join",
-  reply: "phx_reply",
-  leave: "phx_leave"
+class CHANNEL_EVENTS = {
+  static const close = "phx_close";
+  static const error = "phx_error";
+  static const join = "phx_join";
+  static const reply = "phx_reply";
+  static const leave = "phx_leave";
 }
-const enum CHANNEL_LIFECYCLE_EVENTS = [
+class enum CHANNEL_LIFECYCLE_EVENTS = [
   CHANNEL_EVENTS.close,
   CHANNEL_EVENTS.error,
   CHANNEL_EVENTS.join,
   CHANNEL_EVENTS.reply,
   CHANNEL_EVENTS.leave
 ]
-const  TRANSPORTS = {
-  longpoll: "longpoll",
-  websocket: "websocket"
+class TRANSPORTS = {
+  static const longpoll = "longpoll";
+  static const websocket = "websocket";
 }
 
 
-let Serializer = {
+static class Serializer = {
   encode(msg, callback){
-    let payload = [
+    List payload = [
       msg.join_ref, msg.ref, msg.topic, msg.event, msg.payload
     ]
     return callback(JSON.stringify(payload))

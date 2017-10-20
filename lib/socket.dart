@@ -1,6 +1,6 @@
 class Socket {
 
-  constructor(endPoint, opts = {}){
+  Socket(String endPoint, opts = {}){
     this.stateChangeCallbacks = {open: [], close: [], error: [], message: []}
     this.channels             = []
     this.sendBuffer           = []
@@ -31,7 +31,7 @@ class Socket {
     }, this.reconnectAfterMs)
   }
 
-  protocol(){ return location.protocol.match(/^https/) ? "wss" : "ws" }
+  protocol(){ return endPoint.match(/^https/) ? "wss" : "ws" }
 
   endPointURL(){
     let uri = Ajax.appendParams(

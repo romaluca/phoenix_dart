@@ -19,7 +19,7 @@
  * @param {Function} timerCalc
  */
 class Timer {
-  constructor(callback, timerCalc){
+  Timer(callback, timerCalc){
     this.callback  = callback
     this.timerCalc = timerCalc
     this.timer     = null

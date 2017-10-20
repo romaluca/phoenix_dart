@@ -1,6 +1,6 @@
-export class LongPoll {
+class LongPoll {
 
-  constructor(endPoint){
+  LongPoll(endPoint){
     this.endPoint        = null
     this.token           = null
     this.skipHeartbeat   = true

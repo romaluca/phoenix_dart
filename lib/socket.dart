@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'dart:io';
-import './long_poll.dart';
 import './utils.dart';
 import './timer.dart';
 import './ajax.dart';
+import 'channel.dart';
 
 class Socket {
 
@@ -10,8 +11,7 @@ class Socket {
   var channels;
   var sendBuffer;
   var ref;
-  var timeout;
-  var transport;
+  var timeout;  
   var defaultDecoder;
   var defaultEncoder;
   var encode;
@@ -19,36 +19,28 @@ class Socket {
   var heartbeatIntervalMs;
   var reconnectAfterMs;
   var logger;
-  var longpollerTimeout;
   Map params;
   String endPoint;
   PhoenixTimer heartbeatTimer;
   var pendingHeartbeatRef;
   PhoenixTimer reconnectTimer;
-  var conn;
+  WebSocket conn;
 
-  Socket(String endPoint, { timeout, transport, heartbeatIntervalMs = 30000, reconnectAfterMs, logger, longpollerTimeout = 20000, params}){
+  Socket(String endPoint, { timeout, heartbeatIntervalMs = 30000, reconnectAfterMs, logger, Map params}){
     this.stateChangeCallbacks = {"open": [], "close": [], "error": [], "message": []};
     this.channels             = [];
     this.sendBuffer           = [];
     this.ref                  = 0;
-    this.timeout              = timeout ?? DEFAULT_TIMEOUT;
-    this.transport            = transport ?? WebSocket ?? LongPoll;
+    this.timeout              = timeout ?? DEFAULT_TIMEOUT;  
     this.defaultEncoder       = Serializer.encode;
     this.defaultDecoder       = Serializer.decode;
-    if(this.transport != LongPoll){
-      this.encode = encode ?? this.defaultEncoder;
-      this.decode = decode ?? this.defaultDecoder;
-    } else {
-      this.encode = this.defaultEncoder;
-      this.decode = this.defaultDecoder;
-    }
+    this.encode = encode ?? this.defaultEncoder;
+    this.decode = decode ?? this.defaultDecoder;
     this.heartbeatIntervalMs  = heartbeatIntervalMs;
     this.reconnectAfterMs     = reconnectAfterMs ?? (tries){
       return [1000, 2000, 5000, 10000][tries - 1] ?? 10000;
     };
     this.logger               = logger ?? (){}; // noop
-    this.longpollerTimeout    = longpollerTimeout;
     this.params               = params ?? new Map();
     this.endPoint             = "${endPoint}/${TRANSPORTS.websocket}";
     this.heartbeatTimer       = null;
@@ -61,39 +53,42 @@ class Socket {
   String protocol(){ return endPoint.contains("https") ? "wss" : "ws"; }
 
   String endPointURL(){
-    var uri = Ajax.appendParams(
-      Ajax.appendParams(this.endPoint, this.params), {vsn: VSN});
-    if(uri.charAt(0) != "/"){ return uri; }
-    if(uri.charAt(1) == "/"){ return "${this.protocol()}:${uri}"; }
-
-    return "${this.protocol()}://${location.host}${uri}";
+    String uri = Ajax.appendParams(
+      Ajax.appendParams(this.endPoint, this.params), {"vsn": VSN});
+    if(uri[0] != "/"){ return uri; }
+    if(uri[1] == "/"){ return "${this.protocol()}:${uri}"; }
+    return "";
+    //return "${this.protocol()}://${location.host}${uri}";
   }
 
   void disconnect(callback, [code, reason]){
-    if(this.conn){
-      this.conn.onclose = (){}; // noop
-      if(code){ this.conn.close(code, reason ?? ""); } else { this.conn.close(); }
+    if(this.conn != null){
+      if(code != null){ this.conn.close(code, reason ?? ""); } else { this.conn.close(); }
       this.conn = null;
     }
-    callback && callback();
+    if (callback != null) callback();
   }
 
-  /**
-   *
-   * @param {Object} params - The params to send when connecting, for example `{user_id: userToken}`
-   */
-  void connect([Map params]){
+  Future connect([Map params]) async{
     if(params != null){
       print("passing params to connect is deprecated. Instead pass :params to the Socket constructor");
       this.params = params;
     }
-    if(this.conn == null){ 
-      this.conn = new this.transport(this.endPointURL());
-      this.conn.timeout   = this.longpollerTimeout;
-      this.conn.onopen    = () => this.onConnOpen();
-      this.conn.onerror   = (error) => this.onConnError(error);
-      this.conn.onmessage = (event) => this.onConnMessage(event);
-      this.conn.onclose   = (event) => this.onConnClose(event);
+    if(this.conn == null){
+      try {
+        this.conn = await WebSocket.connect(this.endPointURL());
+        this.onConnOpen();
+        this.conn.listen(
+                (event) =>  this.onConnMessage(event),
+            onError: (error) => this.onError(error)
+        );
+      } catch (exception) {
+        this.onConnError(exception);
+      }
+      //    = () => this.onConnOpen();
+      //this.conn.onerror   = ;
+      //this.conn.onmessage = (event) => this.onConnMessage(event);
+      //this.conn.onclose   = (event) => this.onConnClose(event);
     }
   }
 
@@ -120,11 +115,15 @@ class Socket {
     this.log("transport", "connected to ${this.endPointURL()}");
     this.flushSendBuffer();
     this.reconnectTimer.reset();
+
+    /*
     if(!this.conn.skipHeartbeat){
       this.heartbeatTimer.reset();
       this.heartbeatTimer = new PhoenixTimer(() => this.sendHeartbeat(), this.heartbeatIntervalMs);
     }
-    this.stateChangeCallbacks.open.forEach( (callback) => callback() );
+
+    this.stateChangeCallbacks.open.forEach( (callback) => callback() ); // ERRORREEEEE
+    */
   }
 
   void onConnClose(event){
@@ -146,14 +145,15 @@ class Socket {
   }
 
   String connectionState(){
-    switch(this.conn != null && this.conn.readyState){
-      case SOCKET_STATES.connecting: 
+    if(this.conn == null) return "closed";
+    switch(this.conn.readyState) {
+      case SOCKET_STATES.connecting:
         return "connecting";
-      case SOCKET_STATES.open:       
+      case SOCKET_STATES.open:
         return "open";
-      case SOCKET_STATES.closing:     
+      case SOCKET_STATES.closing:
         return "closing";
-      default:                        
+      default:
         return "closed";
     }
   }
@@ -182,7 +182,8 @@ class Socket {
 
     var callback = () {
       this.encode(data, (result) {
-        this.conn.send(result);
+        //this.conn.send(result);
+        this.conn.add(result);
       });
     };
     this.log("push", "${data['topic']} ${data['event']} (${data['join_ref']}, ${data['ref']})", data['payload']);
@@ -212,7 +213,7 @@ class Socket {
         this.conn.close(WS_CLOSE_NORMAL, "hearbeat timeout");        
       } else {
         this.pendingHeartbeatRef = this.makeRef();
-        this.push({topic: "phoenix", event: "heartbeat", payload: {}, ref: this.pendingHeartbeatRef});
+        this.push({"topic": "phoenix", "event": "heartbeat", "payload": {}, "ref": this.pendingHeartbeatRef});
       }
     }
   }
@@ -225,14 +226,20 @@ class Socket {
   }
 
   onConnMessage(rawMessage){
-    this.decode(rawMessage.data, (msg) {
-      var {topic, event, payload, ref, join_ref} = msg;
+    this.decode(rawMessage.data, (Map msg) {
+      var topic = msg["topic"];
+      var event = msg["event"];
+      var payload = msg["payload"];
+      var ref = msg["ref"];
+      var join_ref = msg["join_ref"];
+      
       if(ref != null && ref == this.pendingHeartbeatRef){ this.pendingHeartbeatRef = null; }
-
-      this.log("receive", "${payload.status || ""} ${topic} ${event} ${ref && "(" + ref + ")" || ""}", payload);
+      String status = payload.status ?? "";
+      String refLog = "($ref)";
+      this.log("receive", "$status $topic $event $refLog", payload);
       this.channels.filter( (channel) => channel.isMember(topic, event, payload, join_ref) )
                    .forEach( (channel) => channel.trigger(event, payload, ref, join_ref) );
       this.stateChangeCallbacks.message.forEach( (callback) => callback(msg) );
-    })
+    });
   }
 }

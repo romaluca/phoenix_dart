@@ -1,7 +1,12 @@
 import 'dart:convert';
 
 const String VSN = "2.0.0";
-enum SOCKET_STATES {connecting, open, closing, closed }
+class SOCKET_STATES {
+  static const int connecting = 0;
+  static const int open = 1;
+  static const int closing = 2;
+  static const int closed = 3;
+}
 const int DEFAULT_TIMEOUT = 10000;
 const int WS_CLOSE_NORMAL = 1000;
 
@@ -26,7 +31,7 @@ List<String> CHANNEL_LIFECYCLE_EVENTS = [
   CHANNEL_EVENTS.join,
   CHANNEL_EVENTS.reply,
   CHANNEL_EVENTS.leave
-]
+];
 class TRANSPORTS {
   static const String longpoll = "longpoll";
   static const String websocket = "websocket";
@@ -48,7 +53,7 @@ class Serializer {
   }
 }
 
-
+/*
 class Presence {
 
   static syncState(currentState, newState, onJoin, onLeave){
@@ -128,3 +133,4 @@ class Presence {
 
   static clone(obj){ return JSON.decode(JSON.encode(obj)); }
 }
+*/

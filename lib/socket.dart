@@ -62,7 +62,6 @@ class Socket {
   }
 
   void disconnect(callback, [code, reason]){
-    print("socket disconnect");
     if(this.conn != null){
       if(code != null){ this.conn.close(code, reason ?? ""); } else { this.conn.close(); }
       this.conn = null;
@@ -71,7 +70,6 @@ class Socket {
   }
 
   Future connect([Map params]) async{
-    print("socket connect");
     if(params != null){
       print("passing params to connect is deprecated. Instead pass :params to the Socket constructor");
       this.params = params;
@@ -85,7 +83,7 @@ class Socket {
 
                 (event) =>  this.onConnMessage(event),
             onError: (error) => this.onError(error),
-          onDone: () => print("connection done")
+          onDone: () => this.log("transport", "connection done")
         );
       } catch (exception) {
         this.onConnError(exception);
@@ -121,7 +119,6 @@ class Socket {
     }*/
 
     this.stateChangeCallbacks["open"].forEach( (callback) => callback() );
-    print("socket onConnOpen End");
   }
 
   void onConnClose(event){
@@ -159,7 +156,6 @@ class Socket {
   isConnected(){ return this.connectionState() == "open"; }
 
   remove(channel){
-    print("socket remove");
     this.channels = this.channels.where((c) => c.joinRef() != channel.joinRef()).toList();
   }
 
@@ -172,9 +168,7 @@ class Socket {
 
   void push(Map data){
     var callback = () {
-      print("socket push callback $data");
       this.encode(data, (result) {
-        print("socket push 1 $result");
         //this.conn.send(result);
         this.log("push", "result $result");
         this.conn.add(result);
@@ -219,7 +213,6 @@ class Socket {
   }
 
   onConnMessage(rawMessage){
-    print("onConnMessage $rawMessage");
     this.decode(rawMessage, (Map msg) {
       var topic = msg["topic"];
       var event = msg["event"];

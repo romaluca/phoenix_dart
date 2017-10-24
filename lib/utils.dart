@@ -32,10 +32,6 @@ List<String> CHANNEL_LIFECYCLE_EVENTS = [
   CHANNEL_EVENTS.reply,
   CHANNEL_EVENTS.leave
 ];
-class TRANSPORTS {
-  static const String longpoll = "longpoll";
-  static const String websocket = "websocket";
-}
 
 
 class Serializer {

@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import './channel.dart';
-import './timer.dart';
+
 
 class Push {
 
@@ -29,14 +29,12 @@ class Push {
   }
 
   void resend(timeout){
-    print("push resend");
     this.timeout = timeout;
     this.reset();
     this.send();
   }
 
   void send(){
-    print("push send");
     if(!this.hasReceived("timeout")){
       this.startTimeout();
       this.sent = true;
@@ -51,8 +49,7 @@ class Push {
   }
 
 
-  Push receive(status, callback){
-    print("push receive $status ");
+  Push receive(status, callback){    
     if(this.hasReceived(status)){
       callback(this.receivedResp["response"]);
     }
@@ -65,7 +62,6 @@ class Push {
   // private
 
   void reset(){
-    print("push reset");
     this.cancelRefEvent();
     this.ref          = null;
     this.refEvent     = null;
@@ -74,10 +70,8 @@ class Push {
   }
 
   void matchReceive(payload){
-    print("push matchReceive");
     var status = payload["status"];
     var response = payload["response"];
-    //var ref = payload["ref"];
     this.recHooks.where((h) => h["status"] == status).toList()
                  .forEach( (h) => h["callback"](response));
   }
@@ -93,27 +87,20 @@ class Push {
   }
 
   void startTimeout(){
-    print("push startTimeout");
     if(this.timeoutTimer != null)
       this.cancelTimeout();
     this.ref      = this.channel.socket.makeRef();
     this.refEvent = this.channel.replyEventName(this.ref);
-    print("push startTimeout ${this.refEvent}");
     this.channel.on(this.refEvent, (Map payload, [ref, joinRef]) {
-      print("channel on ${this.refEvent}  $payload");
       this.cancelRefEvent();
       this.cancelTimeout();
       this.receivedResp = payload;
       this.matchReceive(payload);
     });
 
-    /*
-    this.timeoutTimer = new PhoenixTimer(() {
-      this.trigger("timeout", new Map());
-    }, this.timeout);*/
+    
 
     this.timeoutTimer = new Timer(new Duration(milliseconds: this.timeout), () {
-      print("push timeoutTimer fired");
       this.trigger("timeout", new Map());
     });
 
@@ -124,12 +111,10 @@ class Push {
   }
 
   bool hasReceived(status){
-    print("push hasReceived ${this.receivedResp}");
     return this.receivedResp != null && this.receivedResp["status"] == status;
   }
 
   void trigger(status, Map response){
-    print("push trigger");
     this.channel.trigger(this.refEvent, {"status": status, "response": response});
   }
 }

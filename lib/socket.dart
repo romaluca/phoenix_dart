@@ -7,9 +7,9 @@ import 'channel.dart';
 
 class Socket {
 
-  var stateChangeCallbacks;
-  var channels;
-  var sendBuffer;
+  Map<String, List> stateChangeCallbacks;
+  List<Channel> channels;
+  List sendBuffer;
   var ref;
   var timeout;  
   var defaultDecoder;
@@ -62,6 +62,7 @@ class Socket {
   }
 
   void disconnect(callback, [code, reason]){
+    print("socket disconnect");
     if(this.conn != null){
       if(code != null){ this.conn.close(code, reason ?? ""); } else { this.conn.close(); }
       this.conn = null;
@@ -70,6 +71,7 @@ class Socket {
   }
 
   Future connect([Map params]) async{
+    print("socket connect");
     if(params != null){
       print("passing params to connect is deprecated. Instead pass :params to the Socket constructor");
       this.params = params;
@@ -79,25 +81,19 @@ class Socket {
         this.conn = await WebSocket.connect(this.endPointURL());
         this.onConnOpen();
         this.conn.listen(
+
+
                 (event) =>  this.onConnMessage(event),
-            onError: (error) => this.onError(error)
+            onError: (error) => this.onError(error),
+          onDone: () => print("connection done")
         );
       } catch (exception) {
         this.onConnError(exception);
       }
-      //    = () => this.onConnOpen();
-      //this.conn.onerror   = ;
-      //this.conn.onmessage = (event) => this.onConnMessage(event);
       //this.conn.onclose   = (event) => this.onConnClose(event);
     }
   }
 
-  /**
-   * Logs the message. Override `this.logger` for specialized logging. noops by default
-   * @param {string} kind
-   * @param {string} msg
-   * @param {Object} data
-   */
   void log(kind, msg, [data]){ this.logger(kind, msg, data); }
 
   // Registers callbacks for connection state change events
@@ -106,24 +102,26 @@ class Socket {
   //
   //    socket.onError(function(error){ alert("An error occurred") })
   //
-  void onOpen     (callback){ this.stateChangeCallbacks.open.push(callback); }
-  void onClose    (callback){ this.stateChangeCallbacks.close.push(callback); }
-  void onError    (callback){ this.stateChangeCallbacks.error.push(callback); }
-  void onMessage  (callback){ this.stateChangeCallbacks.message.push(callback); }
+  void onOpen     (callback){ this.stateChangeCallbacks["open"].add(callback); }
+  void onClose    (callback){ this.stateChangeCallbacks["close"].add(callback); }
+  void onError    (callback){ this.stateChangeCallbacks["error"].add(callback); }
+  void onMessage  (callback){ this.stateChangeCallbacks["message"].add(callback); }
 
   void onConnOpen(){
     this.log("transport", "connected to ${this.endPointURL()}");
     this.flushSendBuffer();
+
     this.reconnectTimer.reset();
+
 
     /*
     if(!this.conn.skipHeartbeat){
       this.heartbeatTimer.reset();
       this.heartbeatTimer = new PhoenixTimer(() => this.sendHeartbeat(), this.heartbeatIntervalMs);
-    }
+    }*/
 
-    this.stateChangeCallbacks.open.forEach( (callback) => callback() ); // ERRORREEEEE
-    */
+    this.stateChangeCallbacks["open"].forEach( (callback) => callback() );
+    print("socket onConnOpen End");
   }
 
   void onConnClose(event){
@@ -131,17 +129,17 @@ class Socket {
     this.triggerChanError();
     this.heartbeatTimer.reset();
     this.reconnectTimer.scheduleTimeout();
-    this.stateChangeCallbacks.close.forEach( (callback) => callback(event));
+    this.stateChangeCallbacks["close"].forEach( (callback) => callback(event));
   }
 
   void onConnError(error){
     this.log("transport", error);
     this.triggerChanError();
-    this.stateChangeCallbacks.error.forEach((callback) => callback(error) );
+    this.stateChangeCallbacks["error"].forEach((callback) => callback(error) );
   }
 
   void triggerChanError(){
-    this.channels.forEach( (channel) => channel.trigger(CHANNEL_EVENTS.error) );
+    this.channels.forEach( (Channel channel) => channel.trigger(CHANNEL_EVENTS.error) );
   }
 
   String connectionState(){
@@ -161,43 +159,38 @@ class Socket {
   isConnected(){ return this.connectionState() == "open"; }
 
   remove(channel){
-    this.channels = this.channels.filter((c) => c.joinRef() != channel.joinRef());
+    print("socket remove");
+    this.channels = this.channels.where((c) => c.joinRef() != channel.joinRef()).toList();
   }
 
-  /**
-   * Initiates a new channel for the given topic
-   *
-   * @param {string} topic
-   * @param {Object} chanParams - Paramaters for the channel
-   * @returns {Channel}
-   */
   channel(topic, [chanParams]){
     chanParams ??= {};
     var chan = new Channel(topic, chanParams, this);
-    this.channels.push(chan);
+    this.channels.add(chan);
     return chan;
   }
 
   void push(Map data){
-
     var callback = () {
+      print("socket push callback $data");
       this.encode(data, (result) {
+        print("socket push 1 $result");
         //this.conn.send(result);
+        this.log("push", "result $result");
         this.conn.add(result);
       });
     };
     this.log("push", "${data['topic']} ${data['event']} (${data['join_ref']}, ${data['ref']})", data['payload']);
     if(this.isConnected()){
+      this.log("push", "is connected");
       callback();
     }
     else {
-      this.sendBuffer.push(callback);
+      this.log("push", "is not connected");
+      this.sendBuffer.add(callback);
     }
   }
 
-  /**
-   * Return the next message ref, accounting for overflows
-   */
   makeRef(){
     var newRef = this.ref + 1;
     if(newRef == this.ref){ this.ref = 0; } else { this.ref = newRef; }
@@ -226,20 +219,21 @@ class Socket {
   }
 
   onConnMessage(rawMessage){
-    this.decode(rawMessage.data, (Map msg) {
+    print("onConnMessage $rawMessage");
+    this.decode(rawMessage, (Map msg) {
       var topic = msg["topic"];
       var event = msg["event"];
-      var payload = msg["payload"];
+      Map payload = msg["payload"];
       var ref = msg["ref"];
-      var join_ref = msg["join_ref"];
+      var joinRef = msg.containsKey("join_ref") ? msg["join_ref"] : "";
       
       if(ref != null && ref == this.pendingHeartbeatRef){ this.pendingHeartbeatRef = null; }
-      String status = payload.status ?? "";
+      String status = payload["status"] ?? "";
       String refLog = "($ref)";
       this.log("receive", "$status $topic $event $refLog", payload);
-      this.channels.filter( (channel) => channel.isMember(topic, event, payload, join_ref) )
-                   .forEach( (channel) => channel.trigger(event, payload, ref, join_ref) );
-      this.stateChangeCallbacks.message.forEach( (callback) => callback(msg) );
+      this.channels.where( (channel) => channel.isMember(topic, event, payload, joinRef) ).toList()
+                   .forEach( (channel) => channel.trigger(event, payload, ref, joinRef) );
+      this.stateChangeCallbacks["message"].forEach( (callback) => callback(msg) );
     });
   }
 }

@@ -2,25 +2,20 @@ import './utils.dart';
 import './push.dart';
 import './timer.dart';
 import './socket.dart';
-/**
- *
- * @param {string} topic
- * @param {Object} params
- * @param {Socket} socket
- */
+
 class Channel {
   String state;
   var topic;
   Map params;
   Socket socket;
-  var bindings;
+  List<Map> bindings;
   var timeout;
   var joinedOnce;
   Push joinPush;
-  var pushBuffer;
+  List pushBuffer;
   PhoenixTimer rejoinTimer;
 
-  Channel(topic, params, socket) {
+  Channel(topic, [params, socket]) {
     this.state       = CHANNEL_STATES.closed;
     this.topic       = topic;
     this.params      = params ?? new Map();
@@ -34,27 +29,29 @@ class Channel {
       () => this.rejoinUntilConnected(),
       this.socket.reconnectAfterMs
     );
-    this.joinPush.receive("ok", () {
+    this.joinPush.receive("ok", ([response]) {
+      print("joinPush receive OK");
       this.state = CHANNEL_STATES.joined;
       this.rejoinTimer.reset();
       this.pushBuffer.forEach((pushEvent) => pushEvent.send() );
       this.pushBuffer = [];
     });
-    this.onClose( () {
+    this.onClose( ([response]) {
       this.rejoinTimer.reset();
       this.socket.log("channel", "close ${this.topic} ${this.joinRef()}");
       this.state = CHANNEL_STATES.closed;
       this.socket.remove(this);
     });
-    this.onError( (reason) { 
+    this.onError( ([reason, ref, joinRef]) {
       if(!(this.isLeaving() || this.isClosed())){ 
         this.socket.log("channel", "error ${this.topic}", reason);
         this.state = CHANNEL_STATES.errored;
         this.rejoinTimer.scheduleTimeout();
       }
     });
-    this.joinPush.receive("timeout", () { 
-      if(this.isJoining()){ 
+    this.joinPush.receive("timeout", () {
+      print("joinPush receive timeout");
+      if(this.isJoining()){
         this.socket.log("channel", "timeout ${this.topic} (${this.joinRef()})", this.joinPush.timeout);
         var leavePush = new Push(this, CHANNEL_EVENTS.leave, new Map(), this.timeout);
         leavePush.send();
@@ -63,7 +60,8 @@ class Channel {
         this.rejoinTimer.scheduleTimeout();
       }
     });
-    this.on(CHANNEL_EVENTS.reply, (payload, ref) {
+    this.on(CHANNEL_EVENTS.reply, ([ Map payload, ref, joinref]) {
+      print("channel receive reply");
       this.trigger(this.replyEventName(ref), payload);
     });
   }
@@ -75,7 +73,7 @@ class Channel {
     }
   }
 
-  join([timeout]){
+  Push join([timeout]){
     timeout ??= this.timeout;
     if(this.joinedOnce){
       throw("tried to join multiple times. 'join' can only be called a single time per channel instance");
@@ -86,49 +84,45 @@ class Channel {
     }
   }
 
-  onClose(callback){ this.on(CHANNEL_EVENTS.close, callback); }
-
-  onError(callback){
-    this.on(CHANNEL_EVENTS.error, (reason) => callback(reason) );
+  void onClose(callback){
+    print("channel close");
+    this.on(CHANNEL_EVENTS.close, callback);
   }
 
-  on(event, callback){ this.bindings.push({event: event, callback: callback}); }
+  void onError(callback){
+    print("channel error");
+    this.on(CHANNEL_EVENTS.error, ([reason, ref, joinRef]) => callback(reason) );
+  }
 
-  off(event){ this.bindings = this.bindings.filter( (bind) => bind.event != event ); }
+  void on(event, callback){
+    print("channel on $event");
+    this.bindings.add({"event": event, "callback": callback});
+  }
 
-  canPush(){ return this.socket.isConnected() && this.isJoined(); }
+  void off(event){ this.bindings = this.bindings.where( (bind) => bind["event"] != event ).toList(); }
 
-  push(event, payload, [timeout]){
+  bool canPush(){ return this.socket.isConnected() && this.isJoined(); }
+
+  Push push(event, payload, [timeout]){
     timeout ??= this.timeout;
     if(!this.joinedOnce){
-      throw("tried to push '${event}' to '${this.topic}' before joining. Use channel.join() before pushing events");
+      throw("tried to push '$event' to '${this.topic}' before joining. Use channel.join() before pushing events");
     }
     Push pushEvent = new Push(this, event, payload, timeout);
     if(this.canPush()){
+      print("canPush");
       pushEvent.send();
     } else {
+      print("can't push isConnected: ${this.socket.isConnected()} isJoined: ${this.isJoined()} state: ${this.state}");
       pushEvent.startTimeout();
-      this.pushBuffer.push(pushEvent);
+      this.pushBuffer.add(pushEvent);
     }
 
     return pushEvent;
   }
 
-  /** Leaves the channel
-   *
-   * Unsubscribes from server events, and
-   * instructs channel to terminate on server
-   *
-   * Triggers onClose() hooks
-   *
-   * To receive leave acknowledgements, use the a `receive`
-   * hook to bind to the server ack, ie:
-   *
-   * ```javascript
-   *     channel.leave().receive("ok", () => alert("left!") )
-   * ```
-   */
-  leave([timeout]){
+
+  Push leave([timeout]){
     timeout ??= this.timeout;
     this.state = CHANNEL_STATES.leaving;
     var onClose = () {
@@ -144,50 +138,54 @@ class Channel {
     return leavePush;
   }
 
-  /**
-   * Overridable message hook
-   *
-   * Receives all events for specialized message handling
-   * before dispatching to the channel callbacks.
-   *
-   * Must return the payload, modified or unmodified
-   */
-  onMessage(event, payload, ref){ return payload; }
+
+  Map onMessage(event, payload, ref){ return payload; }
 
 
   // private
 
-  isMember(topic, event, payload, joinRef){
-    if(this.topic != topic){ return false; }
+  bool isMember(topic, event, payload, joinRef){
+    if(this.topic != topic){
+      print("isMember: false");
+      return false;
+    }
     var isLifecycleEvent = CHANNEL_LIFECYCLE_EVENTS.indexOf(event) >= 0;
 
     if(joinRef != null && isLifecycleEvent && joinRef != this.joinRef()){
-      this.socket.log("channel", "dropping outdated message", {topic: topic, event: event, payload: payload, joinRef: joinRef});
+      this.socket.log("channel", "dropping outdated message", {"topic": topic, "event": event, "payload": payload, "joinRef": joinRef});
+      print("isMember: false");
       return false;
     } else {
+      print("isMember: true");
       return true;
     }
   }
 
   joinRef(){ return this.joinPush.ref; }
 
-  sendJoin(timeout){
+  void sendJoin(timeout){
+    print("sendJoin $timeout");
     this.state = CHANNEL_STATES.joining;
     this.joinPush.resend(timeout);
   }
 
-  rejoin([timeout]){ 
+  void rejoin([timeout]){
+    print("reJoin");
     timeout ??= this.timeout;
+
     if(!this.isLeaving()) 
       this.sendJoin(timeout);
   }
 
-  trigger(event, payload, [ref, joinRef]){
-    var handledPayload = this.onMessage(event, payload, ref);
+  void trigger(event, [payload, ref, joinRef]){
+    print("trigger $event $payload $ref $joinRef");
+    Map handledPayload = this.onMessage(event, payload, ref);
     if(payload != null && handledPayload == null){ throw("channel onMessage callbacks must return the payload, modified or unmodified"); }
-
-    this.bindings.filter( (bind) => bind.event == event)
-                 .map( (bind) => bind.callback(handledPayload, ref, joinRef ?? this.joinRef()));
+    print("trigger bindings: ${this.bindings.length}");
+    this.bindings.where( (Map bind) => bind["event"] == event).map((Map bind) {
+      print("trigger map bind $bind ${bind["callback"]}");
+      bind["callback"](handledPayload, ref, joinRef ?? this.joinRef());
+    }).toList();
   }
 
   String replyEventName(ref){ return "chan_reply_${ref}"; }

@@ -4,7 +4,7 @@ class PhoenixTimer {
   var callback;
   var timerCalc;
   Timer timer;
-  var tries;
+  int tries;
 
   PhoenixTimer(callback, timerCalc){
     this.callback  = callback;

@@ -39,17 +39,16 @@ class TRANSPORTS {
 
 
 class Serializer {
-  static encode(msg, callback){
+  static encode(Map msg, callback){
     List payload = [
-      msg.join_ref, msg.ref, msg.topic, msg.event, msg.payload
+      msg["join_ref"], msg["ref"], msg["topic"], msg["event"], msg["payload"]
     ];
     return callback(JSON.encode(payload));
   }
 
   static decode(rawPayload, callback){
-    Map e = JSON.decode(rawPayload);
-
-    return callback(e);
+    List e = JSON.decode(rawPayload);
+    return callback({"join_ref": e[0], "ref": e[1], "topic": e[2], "event": e[3], "payload": e[4]});
   }
 }
 

@@ -169,6 +169,7 @@ class Channel {
     Map handledPayload = this.onMessage(event, payload, ref);
     if(payload != null && handledPayload == null){ throw("channel onMessage callbacks must return the payload, modified or unmodified"); }
     this.bindings.where( (Map bind) => bind["event"] == event).map((Map bind) {
+
       bind["callback"](handledPayload, ref, joinRef ?? this.joinRef());
     }).toList();
   }

@@ -42,7 +42,7 @@ class Socket {
     };
     this.logger               = logger ?? (){}; // noop
     this.params               = params ?? new Map();
-    this.endPoint             = "${endPoint}/${TRANSPORTS.websocket}";
+    this.endPoint             = "$endPoint/websocket";
     this.heartbeatTimer       = null;
     this.pendingHeartbeatRef  = null;
     this.reconnectTimer       = new PhoenixTimer(() {
@@ -56,7 +56,7 @@ class Socket {
     String uri = Ajax.appendParams(
       Ajax.appendParams(this.endPoint, this.params), {"vsn": VSN});
     if(uri[0] != "/"){ return uri; }
-    if(uri[1] == "/"){ return "${this.protocol()}:${uri}"; }
+    if(uri[1] == "/"){ return "${this.protocol()}:$uri"; }
     return "";
     //return "${this.protocol()}://${location.host}${uri}";
   }

@@ -5,10 +5,10 @@ import './timer.dart';
 import './ajax.dart';
 import 'channel.dart';
 
-class Socket {
+class PhoenixSocket {
 
   Map<String, List> stateChangeCallbacks;
-  List<Channel> channels;
+  Map<String, Channel> channels;
   List sendBuffer;
   var ref;
   var timeout;  
@@ -21,14 +21,14 @@ class Socket {
   var logger;
   Map params;
   String endPoint;
-  PhoenixTimer heartbeatTimer;
-  var pendingHeartbeatRef;
+  Timer heartbeatTimer;
+  String pendingHeartbeatRef;
   PhoenixTimer reconnectTimer;
   WebSocket conn;
 
-  Socket(String endPoint, { timeout, heartbeatIntervalMs = 30000, reconnectAfterMs, logger, Map params}){
+  PhoenixSocket(String endPoint, { timeout, heartbeatIntervalMs = 30000, reconnectAfterMs, logger, Map params}){
     this.stateChangeCallbacks = {"open": [], "close": [], "error": [], "message": []};
-    this.channels             = [];
+    this.channels             = new Map();
     this.sendBuffer           = [];
     this.ref                  = 0;
     this.timeout              = timeout ?? DEFAULT_TIMEOUT;  
@@ -38,6 +38,7 @@ class Socket {
     this.decode = decode ?? this.defaultDecoder;
     this.heartbeatIntervalMs  = heartbeatIntervalMs;
     this.reconnectAfterMs     = reconnectAfterMs ?? (tries){
+      print("####### tries $tries");
       return [1000, 2000, 5000, 10000][tries - 1] ?? 10000;
     };
     this.logger               = logger ?? (){}; // noop
@@ -62,6 +63,7 @@ class Socket {
   }
 
   void disconnect(callback, [code, reason]){
+    print("disconnect $code $reason");
     if(this.conn != null){
       if(code != null){ this.conn.close(code, reason ?? ""); } else { this.conn.close(); }
       this.conn = null;
@@ -110,13 +112,10 @@ class Socket {
     this.flushSendBuffer();
 
     this.reconnectTimer.reset();
-
-
-    /*
-    if(!this.conn.skipHeartbeat){
-      this.heartbeatTimer.reset();
-      this.heartbeatTimer = new PhoenixTimer(() => this.sendHeartbeat(), this.heartbeatIntervalMs);
-    }*/
+    if(this.heartbeatTimer != null)
+      this.heartbeatTimer.cancel();
+    this.heartbeatTimer = new Timer.periodic(new Duration(milliseconds: this.heartbeatIntervalMs),
+        (Timer t) => this.sendHeartbeat());
 
     this.stateChangeCallbacks["open"].forEach( (callback) => callback() );
   }
@@ -124,7 +123,7 @@ class Socket {
   void onConnClose(event){
     this.log("transport", "close", event);
     this.triggerChanError();
-    this.heartbeatTimer.reset();
+    this.heartbeatTimer.cancel();
     this.reconnectTimer.scheduleTimeout();
     this.stateChangeCallbacks["close"].forEach( (callback) => callback(event));
   }
@@ -136,7 +135,7 @@ class Socket {
   }
 
   void triggerChanError(){
-    this.channels.forEach( (Channel channel) => channel.trigger(CHANNEL_EVENTS.error) );
+    this.channels.forEach( (key, Channel channel) => channel.trigger(CHANNEL_EVENTS.error) );
   }
 
   String connectionState(){
@@ -155,14 +154,14 @@ class Socket {
 
   isConnected(){ return this.connectionState() == "open"; }
 
-  remove(channel){
-    this.channels = this.channels.where((c) => c.joinRef() != channel.joinRef()).toList();
+  remove(Channel channel){
+    this.channels.remove(channel.topic);
   }
 
   channel(topic, [chanParams]){
     chanParams ??= {};
     var chan = new Channel(topic, chanParams, this);
-    this.channels.add(chan);
+    this.channels[topic] = chan;
     return chan;
   }
 
@@ -185,16 +184,16 @@ class Socket {
     }
   }
 
-  makeRef(){
+  String makeRef(){
     var newRef = this.ref + 1;
     if(newRef == this.ref){ this.ref = 0; } else { this.ref = newRef; }
 
     return this.ref.toString();
   }
 
-  sendHeartbeat(){ 
-    if(this.isConnected()){ 
-      if(this.pendingHeartbeatRef){
+  sendHeartbeat(){
+    if(this.isConnected()){
+      if(this.pendingHeartbeatRef != null){
         this.pendingHeartbeatRef = null;
         this.log("transport", "heartbeat timeout. Attempting to re-establish connection");
         this.conn.close(WS_CLOSE_NORMAL, "hearbeat timeout");        
@@ -217,15 +216,17 @@ class Socket {
       var topic = msg["topic"];
       var event = msg["event"];
       Map payload = msg["payload"];
-      var ref = msg["ref"];
+      String ref = msg["ref"];
       var joinRef = msg.containsKey("join_ref") ? msg["join_ref"] : "";
       
       if(ref != null && ref == this.pendingHeartbeatRef){ this.pendingHeartbeatRef = null; }
       String status = payload["status"] ?? "";
       String refLog = "($ref)";
       this.log("receive", "$status $topic $event $refLog", payload);
-      this.channels.where( (channel) => channel.isMember(topic, event, payload, joinRef) ).toList()
-                   .forEach( (channel) => channel.trigger(event, payload, ref, joinRef) );
+      this.channels.forEach( (key, channel) {
+        if(channel.isMember(topic, event, payload, joinRef))
+          channel.trigger(event, payload, ref, joinRef);
+      });
       this.stateChangeCallbacks["message"].forEach( (callback) => callback(msg) );
     });
   }

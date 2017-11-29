@@ -10,7 +10,7 @@ class Channel {
   String state;
   var topic;
   Map params;
-  Socket socket;
+  PhoenixSocket socket;
   List<Map> bindings;
   var timeout;
   var joinedOnce;
@@ -118,13 +118,13 @@ class Channel {
   Push leave([timeout]){
     timeout ??= this.timeout;
     this.state = CHANNEL_STATES.leaving;
-    var onClose = () {
+    var onClose = ([bool timeout = false]) {
       this.socket.log("channel", "leave ${this.topic}");
-      this.trigger(CHANNEL_EVENTS.close, "leave");
+      this.trigger(CHANNEL_EVENTS.close, new Map());
     };
     Push leavePush = new Push(this, CHANNEL_EVENTS.leave, new Map(), timeout);
-    leavePush.receive("ok", () => onClose() )
-             .receive("timeout", () => onClose() );
+    leavePush.receive("ok", (e, [ref, joinRef]) => onClose())
+    .receive("timeout", (e, [ref, joinRef]) => onClose(true) );
     leavePush.send();
     if(!this.canPush()){ leavePush.trigger("ok", new Map()); }
 

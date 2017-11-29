@@ -26,6 +26,6 @@ class PhoenixTimer {
     this.timer = new Timer(new Duration(milliseconds: this.timerCalc(this.tries + 1)), () {
       this.tries = this.tries + 1;
       this.callback();
-    });    
+    });
   }
 }

@@ -1,4 +1,4 @@
 library phoenix_dart;
 
-export 'socket.dart';
-export 'channel.dart';
+export 'package:phoenix_dart/src/socket.dart';
+export 'package:phoenix_dart/src/channel.dart';

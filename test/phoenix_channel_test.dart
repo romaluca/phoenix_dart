@@ -1,6 +1,5 @@
 import 'package:test/test.dart';
 
-import 'package:phoenix_dart/phoenix_dart.dart';
 
 void main() {
   test('adds one to input values', () {

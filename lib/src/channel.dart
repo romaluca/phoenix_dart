@@ -122,8 +122,8 @@ class PhoenixChannel {
       trigger(ChannelEvents.close, <String, dynamic>{});
     };
     final Push leavePush = new Push(this, ChannelEvents.leave, <String, dynamic>{}, timeout);
-    leavePush.receive("ok", (String e, [String ref, String joinRef]) => onClose())
-    .receive("timeout", (String e, [String ref, String joinRef]) => onClose(true) );
+    leavePush.receive("ok", (Map<String, dynamic> e, [String ref, String joinRef]) => onClose())
+    .receive("timeout", (dynamic e, [String ref, String joinRef]) => onClose(true) );
     leavePush.send();
     if(!canPush()){ leavePush.trigger("ok", <String, dynamic>{}); }
 
@@ -159,7 +159,7 @@ class PhoenixChannel {
 
   void rejoin([int timeout]){
     timeout ??= this.timeout;
-
+    print("SOCKET PhoenixChannel rejoin");
     if(!isLeaving())
       sendJoin(timeout);
   }

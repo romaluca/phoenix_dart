@@ -94,17 +94,25 @@ class PhoenixSocket {
         onConnOpen();
         print("oleeee");
         conn.listen(
-
-
                 (dynamic event) =>  onConnMessage(event),
             onError: (dynamic error) => onError(error),
           onDone: () => log("transport", "connection done")
         );
+        print("before rejoin $channels");
+        channels.forEach( (String key, PhoenixChannel channel) {
+          print("rejoin channel $key");
+          channel.rejoin();
+        });
+        print("after rejoin $channels");
       } catch (exception) {
         print("ERRORE connect $exception");
         onConnError(exception);
       }
       //this.conn.onclose   = (event) => this.onConnClose(event);
+    } else {
+      print("SOCKET connect: conn is not null: disconnecting for reconnecting");
+      conn = null;
+      await connect();
     }
   }
 
@@ -228,6 +236,7 @@ class PhoenixSocket {
   }
 
   void onConnMessage(String rawMessage){
+    //print("SOCKET onConnMessage - $rawMessage");
     this.decode(rawMessage, (Map<dynamic, dynamic> msg) {
       final String topic = msg["topic"];
       final String event = msg["event"];
